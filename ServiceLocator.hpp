@@ -22,9 +22,15 @@
 #include <list>
 #include <set>
 #include <typeindex>
+#ifdef _WIN32
+#include <dbghelp.h>
+#else
 #include <cxxabi.h>
+#endif
 #include <functional>
 #include <memory>
+
+static int demangle(const char* name, std::string& out);
 
 #ifndef SERVICELOCATOR_SPTR
 #define SERVICELOCATOR_SPTR
@@ -100,25 +106,21 @@ public:
         
         
         std::string getTypeName(const std::type_index& typeIndex) const {
-            int status;
-            auto s = __cxxabiv1::__cxa_demangle (typeIndex.name(), nullptr, nullptr, &status);
             std::string result;
+            int status = demangle(typeIndex.name(), result);
             switch(status) {
                 case 0:
-                    result = std::string(s);
+                    return result;
                     break;
-                case 1:
-                    result = "Memory failure";
+                case -1:
+                    return "Memory failure";
                     break;
-                case 2:
-                    result = "Not a mangled name";
+                case -2:
+                    return "Not a mangled name";
                     break;
-                case 3:
-                    result = "Invalid arguments";
+                case -3:
+                    return "Invalid arguments";
                     break;
-            }
-            if (s) {
-                delete s;
             }
             return result;
         }
@@ -800,5 +802,24 @@ public:
 };
 
 typedef sptr<ServiceLocator::Context> SLContext_sptr;
+
+
+#ifdef _WIN32
+static int demangle(const char* name, std::string& out) {
+  char symb[1024];
+  int status = UnDecorateSymbolName(name, symb, sizeof(symb), UNDNAME_COMPLETE);
+  out = std::string(symb);
+  return !status;
+}
+#else
+static int demangle(const char* name, std::string& out) {
+  int status;
+  auto s = __cxxabiv1::__cxa_demangle(typeIndex.name(), nullptr, nullptr, &status);
+  std::string result(s);
+  if (s)
+    free(s);
+  return status;
+}
+#endif
 
 #endif /* ServiceLocator_hpp */
